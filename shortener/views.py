@@ -1,13 +1,16 @@
 from django.db.models import F
-from django.http import HttpResponsePermanentRedirect
+from django.conf import settings
+from django.http import HttpResponsePermanentRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
-
+from django.views.decorators.csrf import csrf_exempt
 from shortener.baseconv import base62
 from shortener.models import Link
 from shortener.forms import LinkSubmitForm
 
-
+short_url = getattr(settings, "SHORTENING_DOMAIN", None)
+short_scheme = getattr(settings, "SHORTENING_SCHEME", None)
+@csrf_exempt
 @require_GET
 def follow(request, base62_id):
     """
@@ -19,16 +22,19 @@ def follow(request, base62_id):
     link.save()
     return HttpResponsePermanentRedirect(link.url)
 
-
+@csrf_exempt
 @require_GET
 def info(request, base62_id):
     """
     View which shows information on a particular link
     """
     link = get_object_or_404(Link, id=base62.to_decimal(base62_id))
-    return render(request, 'shortener/link_info.html', {'link': link})
+    return JsonResponse({'short_url': "/".join(["://".join([short_scheme or request.scheme,short_url or request.get_host()]),link.to_base62()]),
+                        'url': link.url,
+                        'follow_count':link.usage_count
+                        })
 
-
+@csrf_exempt
 @require_POST
 def submit(request):
     """
@@ -42,11 +48,11 @@ def submit(request):
             # specify an explicit id corresponding to the custom url
             kwargs.update({'id': base62.to_decimal(custom)})
         link = Link.objects.create(**kwargs)
-        return render(request, 'shortener/submit_success.html', {'link': link})
+        return JsonResponse({'short_url': "/".join(["://".join([short_scheme or request.scheme,short_url or request.get_host()]),link.to_base62()])},status=201)
     else:
-        return render(request, 'shortener/submit_failed.html', {'link_form': form})
+        return JsonResponse({'errors': form.errors},status=400)
 
-
+@csrf_exempt
 @require_GET
 def index(request):
     """
